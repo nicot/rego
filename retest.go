@@ -41,7 +41,6 @@ func main() {
 	}
 
 	pkgPath := flag.Arg(0)
-	cmdArgs := flag.Args()[1:]
 
 	wd, err := os.Getwd()
 	if err != nil {
@@ -93,59 +92,25 @@ func main() {
 		}
 	}
 
-	restart := make(chan struct{})
-	go func() {
-		var proc *os.Process
-		for v := range restart {
-			_ = v
-			if proc != nil {
-				if err := proc.Signal(os.Interrupt); err != nil {
-					log.Println(err)
-					proc.Kill()
-				}
-				proc.Wait()
-			}
-			cmd := exec.Command(filepath.Join(pkg.BinDir, filepath.Base(pkg.ImportPath)), cmdArgs...)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if *verbose {
-				log.Println(cmd.Args)
-			}
-			if err := cmd.Start(); err != nil {
-				log.Println(err)
-			}
-			proc = cmd.Process
-		}
-	}()
-
-	nrestarts := 0
 	installAndRestart := func() {
 		s := "\x1b[37;1m\x1b[44m .. \x1b[0m"
 		del := len(s)
 		fmt.Fprint(os.Stderr, s)
 
-		cmd := exec.Command("go", "install", "-tags="+strings.Join(build.Default.BuildTags, " "), pkg.ImportPath)
+		cmd := exec.Command("go", "test", "-tags="+strings.Join(build.Default.BuildTags, " "), pkg.ImportPath)
 		if *otherPkgs != "" {
 			cmd.Args = append(cmd.Args, strings.Split(*otherPkgs, ",")...)
 		}
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if *verbose {
-			log.Printf("go install %s", pkg.ImportPath)
+			log.Printf("go test %s", pkg.ImportPath)
 		}
 		if err := cmd.Run(); err == nil {
-			var word string
-			if nrestarts == 0 {
-				word = "starting"
-			} else {
-				word = "restarting"
-			}
-			nrestarts++
 			fmt.Fprint(os.Stderr, strings.Repeat("\b", del))
-			log.Println("\x1b[37;1m\x1b[42m ok \x1b[0m", word)
-			restart <- struct{}{}
+			log.Println("\x1b[37;1m\x1b[42m ok \x1b[0m", "testing")
 		} else {
-			log.Println("\x1b[37;1m\x1b[41m!!!!\x1b[0m", "compilation failed")
+			log.Println("\x1b[37;1m\x1b[41m!!!!\x1b[0m", "test failed")
 		}
 	}
 
