@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"go/build"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -17,14 +19,15 @@ import (
 )
 
 var (
+	tests   = flag.String("t", "", "only run tests matching this regex")
 	verbose = flag.Bool("v", false, "verbose output")
 
-	// otherPkgs lets you specify other packages that will also be
-	// installed when the watched files change. This lets you work
-	// around an annoyance where godep does not rebuild stale vendored
-	// dependencies when their sources change (see
-	// https://github.com/tools/godep/issues/45#issuecomment-73411554);
-	// you just need to specify any vendored package in this flag.
+	// otherPkgs lets you specify other packages that will also be installed
+	// when the watched files change. This lets you work around an annoyance
+	// where godep does not rebuild stale vendored dependencies when their
+	// sources change (see
+	// https://github.com/tools/godep/issues/45#issuecomment-73411554); you
+	// just need to specify any vendored package in this flag.
 	otherPkgs = flag.String("p", "", "also `go install` these other pkgs (comma-separated import paths)")
 )
 
@@ -97,20 +100,29 @@ func main() {
 		del := len(s)
 		fmt.Fprint(os.Stderr, s)
 
-		cmd := exec.Command("go", "test", "-tags="+strings.Join(build.Default.BuildTags, " "), pkg.ImportPath)
+		cmd := exec.Command(
+			"go",
+			"test",
+			"-tags="+strings.Join(build.Default.BuildTags, " "),
+			pkg.ImportPath,
+			"-test.run="+*tests,
+		)
 		if *otherPkgs != "" {
 			cmd.Args = append(cmd.Args, strings.Split(*otherPkgs, ",")...)
 		}
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+		out := new(bytes.Buffer)
+		cmd.Stderr = out
+		cmd.Stdout = out
 		if *verbose {
 			log.Printf("go test %s", pkg.ImportPath)
 		}
 		if err := cmd.Run(); err == nil {
 			fmt.Fprint(os.Stderr, strings.Repeat("\b", del))
-			log.Println("\x1b[37;1m\x1b[42m ok \x1b[0m", "testing")
+			log.Println("\x1b[37;1m\x1b[42m ok \x1b[0m")
 		} else {
-			log.Println("\x1b[37;1m\x1b[41m!!!!\x1b[0m", "test failed")
+			fmt.Fprint(os.Stderr, strings.Repeat("\b", del))
+			io.Copy(os.Stdout, out)
+			log.Println("\x1b[37;1m\x1b[41m!!!!\x1b[0m")
 		}
 	}
 
